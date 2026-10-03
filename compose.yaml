@@ -1,0 +1,13 @@
+services:
+  browser:
+    build: .
+    image: systemone-browser-mcp:internal-laya
+    env_file:
+      - .env
+    stdin_open: true
+    tty: false
+    volumes:
+      - laya-cache:/home/node/.cache/huggingface
+
+volumes:
+  laya-cache:

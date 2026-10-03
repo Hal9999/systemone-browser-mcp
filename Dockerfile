@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv tini \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/laya \
-    && /opt/laya/bin/pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
+    && /opt/laya/bin/pip install --no-cache-dir 'torch==2.8.0+cpu' --index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/cpu \
     && /opt/laya/bin/pip install --no-cache-dir 'laya[serve]==0.3.26'
 COPY package*.json ./
 RUN npm ci && npx playwright install --with-deps chromium

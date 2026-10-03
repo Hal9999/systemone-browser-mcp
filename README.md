@@ -67,3 +67,22 @@ Initial validation covers response parsing and TypeScript checks. Real Unsloth c
 ## Attribution
 
 Adapted from https://github.com/cline/plugins/tree/main/plugins/jev-browser at commit `96bde661f630ec23c1ce0cd86a2361a9959ef65a`. See LICENSE and NOTICE. The upstream repository has Apache-2.0 licensing while the plugin package metadata declares MIT; this discrepancy is recorded rather than silently discarded.
+
+## Docker logs
+
+Structured JSON logs go to **stderr**. MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. They exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
+
+Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne truncation/token-count metadata without dumping content.
+
+```bash
+docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}"
+docker logs -f --tail 100 CONTAINER_ID
+```
+
+Docker logs may include stdout MCP responses (which contain page content) as well as stderr. To view only the application's diagnostic stderr in PowerShell:
+
+```powershell
+docker logs -f --tail 100 CONTAINER_ID 1>$null
+```
+
+With `--rm`, Docker removes the container and its logs when it exits. Inspect logs while the MCP connection is active. For manual diagnosis, omit `--rm` and optionally give the container a name; remove it afterwards.

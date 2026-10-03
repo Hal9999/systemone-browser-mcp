@@ -1,3 +1,4 @@
+import { log, logContext } from './logger.ts';
 import { randomUUID } from 'node:crypto';
 import { chromium, type Browser, type Page } from 'playwright';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -18,10 +19,12 @@ function validateUrl(value: string) {
 }
 async function ensurePage() {
   if (!browser) {
+    log('info', 'browser.starting');
     browser = await chromium.launch({ headless: process.env.HEADLESS !== 'false' });
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: false });
     page = await context.newPage();
     context.on('page', newPage => { page = newPage; });
+    log('info', 'browser.ready');
   }
   if (!page || page.isClosed()) page = await browser.newPage();
   return page;
@@ -34,16 +37,21 @@ server.registerTool('browser_run', {
   const startUrl = url ? validateUrl(url) : undefined;
   const current = { id: randomUUID(), running: true, controller: new AbortController(), trace: [] as unknown[], result: undefined as unknown };
   job = current;
-  void (async () => {
+  log('info', 'job.started', { jobId: current.id, maxSteps });
+  void logContext.run({ jobId: current.id }, async () => {
     try {
       const active = await ensurePage();
       current.controller.signal.throwIfAborted();
-      if (startUrl) await active.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      if (startUrl) {
+        log('info', 'navigation.started', { host: new URL(startUrl).host });
+        await active.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        log('info', 'navigation.completed');
+      }
       current.controller.signal.throwIfAborted();
-      current.result = await runJev({ goal, maxSteps, minProbability }, { page: () => page!, signal: current.controller.signal, onStep: async step => { current.trace.push(step); } });
-    } catch { current.result = { status: 'interrupted', message: 'Browser initialization or navigation failed. Check browser installation and URL.' }; }
-    finally { current.running = false; }
-  })();
+      current.result = await runJev({ goal, maxSteps, minProbability }, { page: () => page!, signal: current.controller.signal, onStep: async step => { current.trace.push(step); log('info', 'browser.step', { step: step.step, operation: step.operation, status: step.status, probability: step.probability, latencyMs: step.latencyMs }); } });
+    } catch (error) { log('error', 'browser.initialization_failed', { errorType: error instanceof Error ? error.name : 'UnknownError' }); current.result = { status: 'interrupted', message: 'Browser initialization or navigation failed. Check browser installation and URL.' }; }
+    finally { current.running = false; const result = current.result as any; log(result?.failure ? 'error' : 'info', 'job.finished', { status: result?.status, failure: result?.failure, elapsedMs: result?.elapsedMs }); }
+  });
   return output({ jobId: current.id, running: true });
 });
 server.registerTool('browser_status', { description: 'Get task trace and, once stopped, current page evidence to verify results.', inputSchema: {} }, async () => {
@@ -55,10 +63,13 @@ server.registerTool('browser_status', { description: 'Get task trace and, once s
   return output({ jobId: job?.id, running: job?.running ?? false, trace: job?.trace, result: job?.result, observation });
 });
 server.registerTool('browser_cancel', { description: 'Request cancellation of the current task. Poll status until running is false.', inputSchema: {} }, async () => {
+  log('info', 'job.cancel_requested', { jobId: job?.id });
   job?.controller.abort();
   return output({ jobId: job?.id, cancellationRequested: !!job?.running });
 });
-async function shutdown() { job?.controller.abort(); await browser?.close(); process.exit(0); }
+async function shutdown() { log('info', 'server.stopping'); job?.controller.abort(); await browser?.close(); process.exit(0); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 await server.connect(new StdioServerTransport());
+
+log('info', 'server.ready', { transport: 'stdio', version: '0.1.0' });

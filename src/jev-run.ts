@@ -6,7 +6,7 @@ import {
 	observe,
 	StaleObservationError,
 } from "./jev-browser.ts";
-import { createJevPolicy, type JevPolicy } from "./jev-model.ts";
+import { createJevPolicy, PolicyError, type JevPolicy } from "./jev-model.ts";
 
 export interface RunInput {
 	goal: string;
@@ -86,7 +86,7 @@ export async function runJev(
 	let stage = "observation";
 	const textCache = new Map<string, string>();
 	const started = performance.now();
-	let failure: { stage: string; category: string } | undefined;
+	let failure: { stage: string; category: string; detail?: string } | undefined;
 	const finish = (status: RunStatus, message: string) => ({
 		failure,
 		status,
@@ -266,8 +266,10 @@ export async function runJev(
 	} catch (error) {
 		failure = {
 			stage,
+            ...(error instanceof PolicyError ? { detail: error.message } : {}),
 			category: signal.aborted
 				? "cancelled"
+                : error instanceof PolicyError ? error.code
 				: isNavigationReadError(error)
 					? "navigation_context"
 					: error instanceof Error && error.name === "TimeoutError"

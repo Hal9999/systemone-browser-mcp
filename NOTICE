@@ -1,0 +1,6 @@
+This project includes code adapted from cline/plugins, plugins/jev-browser.
+Upstream: https://github.com/cline/plugins
+Revision: 96bde661f630ec23c1ce0cd86a2361a9959ef65a
+Repository license: Apache-2.0 (included in LICENSE).
+The upstream plugin package.json also declares MIT; this metadata discrepancy is recorded here.
+Original authors retain their rights. Modified files are marked.

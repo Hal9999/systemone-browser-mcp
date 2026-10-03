@@ -1,3 +1,26 @@
+# internal-laya branch
+
+This branch embeds the official Laya HTTP runtime inside the MCP container. Decisions run on CPU using only the multilingual checkpoint (`convaiinnovations/laya-multilingual`, loaded explicitly from the requested standalone repository). Text generation still uses your configured OpenAI-compatible endpoint.
+
+Every decision explicitly sends `max_len=8192`. `head_max_len=2048` increases the shared question/option budget from 256 tokens and is configurable. These are maximum budgets, not padding lengths or a guarantee of navigation accuracy. The SDK can still shorten inputs/options beyond these budgets.
+
+```powershell
+git switch internal-laya
+git pull
+docker build -t systemone-browser-mcp:internal-laya .
+docker run --rm -i --env-file .env -v laya-cache:/home/node/.cache/huggingface systemone-browser-mcp:internal-laya
+```
+
+Update the MCP client's Docker image argument to `systemone-browser-mcp:internal-laya`. Add `-v`, `laya-cache:/home/node/.cache/huggingface` to its Docker args to retain downloaded weights between runs. The existing `.env` can retain old SystemOne values: the entrypoint overrides them for internal decisions. Keep `OPENAI_API_KEY` explicitly set for Unsloth text generation.
+
+The first connection downloads and loads the model before MCP starts; it may exceed the client's connection timeout. Run the command above manually once to warm the cache, then stop it and connect from your client. No host port mapping is required. Laya listens only on container loopback. Its logs go to stderr alongside MCP diagnostics. `tini` and the Python supervisor stop both processes on container shutdown; the MCP process inherits stdin/stdout directly.
+
+CPU threads default to PyTorch's setting. Set `LAYA_THREADS` to an appropriate physical-core count (example: 6). Full-length CPU requests may take longer: the browser run timeout defaults to 300 seconds on this branch, configurable through `RUN_TIMEOUT_MS`. Startup/download timeout is 900 seconds, configurable through `LAYA_STARTUP_TIMEOUT`.
+
+Dependencies: CPU PyTorch 2.8.0, Laya 0.3.26. Weights are fetched at first startup, not embedded into the image. This branch's Docker build and real model inference require local validation; TypeScript, protocol and unit checks are separate.
+
+---
+
 # SystemOne Browser MCP
 
 Standalone MCP server adapting the autonomous browser loop from Cline's `jev-browser`. Playwright observes and operates the page; a configurable `/v1/systemone` backend selects actions. An OpenAI-compatible text model fills non-sensitive text fields. No Cline plugin or Typesafe Gateway key is required.

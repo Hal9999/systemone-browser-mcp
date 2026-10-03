@@ -71,7 +71,7 @@ export async function runJev(
 	)
 		throw new Error("minProbability must be from 0 to 1.");
 	const signal = AbortSignal.any([
-		AbortSignal.timeout(100_000),
+		AbortSignal.timeout(Number(process.env.RUN_TIMEOUT_MS ?? 100_000)),
 		...(options.signal ? [options.signal] : []),
 	]);
 	signal.throwIfAborted();

@@ -137,7 +137,9 @@ export function createJevPolicy(): JevPolicy {
   return {
     async choose(observation, goal, history, signal) {
       const questions = buildQuestions(observation, goal);
-      const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya", state: JSON.stringify({ page: observation, recentActions: history.slice(-10) }), questions }, signal);
+      const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
+        ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),
+        ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}), state: JSON.stringify({ page: observation, recentActions: history.slice(-10) }), questions }, signal);
       log('debug', 'systemone.response_metadata', { truncated: (result as any).truncated, inputTokens: (result as any).usage?.input_tokens, offeredActions: Object.keys(questions.action.criteria).length });
       return parseDecision(result, questions, observation);
     },

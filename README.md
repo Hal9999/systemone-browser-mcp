@@ -133,3 +133,11 @@ To launch from an MCP client regardless of its working directory, set command to
 ```
 
 Build and warm the model cache manually before connecting from the client. Find the running container with `docker compose ps -a` (or `docker ps`) and inspect `docker logs -f CONTAINER_ID`. Do not run `docker compose down -v` unless you intend to delete the cached weights.
+
+## Optional screenshots
+
+Set `SCREENSHOTS_ENABLED=true` in `.env` and reconnect the MCP container. The default is disabled. Compose bind-mounts `./artifacts` from the project directory at `/app/artifacts`; screenshots are regular local files, not a Docker volume.
+
+Each task creates `artifacts/JOB_ID/` with numbered viewport PNGs: initial page, decisions (including terminal decisions), executed actions, stale observations and final page. The executed image is taken immediately after the action; the next decision image shows the later rendered page. `browser_status` lists paths relative to the artifacts directory. Logs include `screenshot.saved` or `screenshot.failed`. Capture failures warn without interrupting navigation.
+
+Existing `.env` files are not replaced by Git: add `SCREENSHOTS_ENABLED=true` manually. With plain Docker, add `-v ABSOLUTE_LOCAL_ARTIFACTS_PATH:/app/artifacts`. On Linux, the bind directory must be writable by container user `node` (UID 1000); on Docker Desktop, use a shared writable directory. Screenshots can contain visible personal data and are not redacted. Screenshot capture is bounded to five seconds per image and adds some latency. No video or trace is enabled by this option.

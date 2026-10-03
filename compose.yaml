@@ -7,6 +7,7 @@ services:
     stdin_open: true
     tty: false
     volumes:
+      - ./artifacts:/app/artifacts
       - laya-cache:/home/node/.cache/huggingface
 
 volumes:

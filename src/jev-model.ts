@@ -89,18 +89,28 @@ export function parseText(value: string): string {
 }
 
 
+export class PolicyError extends Error {
+  constructor(public code: string, message: string) { super(message); }
+}
 export function parseDecision(result: any, questions: ReturnType<typeof buildQuestions>, observation: Observation): Decision {
-  if (result.truncated) throw new Error("SystemOne truncated the observation; decision rejected.");
+  if (result.truncated) throw new PolicyError("systemone_truncated", "SystemOne truncated the observation; decision rejected. Reduce observation and question size.");
   const answer = result.answers?.action;
   if (answer?.type !== "choice" || typeof answer.choice !== "string" || !Object.hasOwn(questions.action.criteria, answer.choice))
-    throw new Error("SystemOne returned an unoffered action.");
+    throw new PolicyError("invalid_decision", "SystemOne response did not contain an offered action.");
   const target = observation.targets.find(t => `${t.operation}:${t.id}` === answer.choice);
   return { operation: target?.operation ?? answer.choice, target, probability: answer.probabilities?.[answer.choice], providerConfidence: answer.confidence };
 }
 async function post(url: string, key: string | undefined, body: unknown, signal: AbortSignal) {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) }, body: JSON.stringify(body), signal });
-  if (!response.ok) throw new Error(`AI endpoint returned HTTP ${response.status}`);
-  return response.json();
+  let response: Response;
+  try { response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) }, body: JSON.stringify(body), signal }); } catch {
+    if (signal.aborted) signal.throwIfAborted();
+    throw new PolicyError("endpoint_unreachable", "Cannot reach AI endpoint. Check host.docker.internal, port, server binding and firewall.");
+  }
+  if (!response.ok) {
+    const hints: Record<number, string> = { 401: "Check API key.", 403: "Check API permissions.", 404: "Check endpoint URL and model name.", 422: "Request rejected: check model name and SystemOne schema/limits.", 503: "Model may be loading or unavailable.", 529: "SystemOne is busy." };
+    throw new PolicyError(`http_${response.status}`, `AI endpoint returned HTTP ${response.status}. ${hints[response.status] ?? "Check Unsloth server logs."}`);
+  }
+  try { return await response.json(); } catch { throw new PolicyError("invalid_json", "AI endpoint returned invalid JSON."); }
 }
 export function createJevPolicy(): JevPolicy {
   const url = process.env.SYSTEMONE_URL ?? "http://127.0.0.1:8888/v1/systemone";

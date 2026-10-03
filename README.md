@@ -109,3 +109,27 @@ docker logs -f --tail 100 CONTAINER_ID 1>$null
 ```
 
 With `--rm`, Docker removes the container and its logs when it exits. Inspect logs while the MCP connection is active. For manual diagnosis, omit `--rm` and optionally give the container a name; remove it afterwards.
+
+## Compose shortcut (internal-laya)
+
+From this repository's directory:
+
+```powershell
+docker compose build
+docker compose run --rm -T browser
+```
+
+Use `run`, not `up -d`, because MCP needs stdin/stdout. `-T` explicitly disables terminal allocation. Compose reads `.env` and mounts the model cache automatically. The named cache volume is project-scoped; an older volume created with plain `docker run -v laya-cache:...` is separate.
+
+To launch from an MCP client regardless of its working directory, set command to `docker` and use:
+
+```json
+[
+  "compose",
+  "--project-directory", "C:/absolute/path/systemone-browser-mcp",
+  "-f", "C:/absolute/path/systemone-browser-mcp/compose.yaml",
+  "run", "--rm", "-T", "browser"
+]
+```
+
+Build and warm the model cache manually before connecting from the client. Find the running container with `docker compose ps -a` (or `docker ps`) and inspect `docker logs -f CONTAINER_ID`. Do not run `docker compose down -v` unless you intend to delete the cached weights.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildQuestions, parseDecision, parseText } from '../src/jev-model.ts';
+import { buildQuestions, parseDecision, parseText, endpointErrorMessage } from '../src/jev-model.ts';
 import type { Observation } from '../src/jev-browser.ts';
 const observation: Observation = { url: 'https://example.org', title: 'Test', text: 'Result', targets: [{ id: '1', operation: 'CLICK', label: 'Result', value: '' }], scrollUp: false, scrollDown: false };
 test('maps the verified SystemOne response format to offered target', () => {
@@ -15,4 +15,10 @@ test('text helper rejects null or extra fields', () => {
   assert.equal(parseText('{"text":"query"}'), 'query');
   assert.throws(() => parseText('{"text":null}'));
   assert.throws(() => parseText('{"text":"query","action":"submit"}'));
+});
+
+test('extracts Unsloth context error and omits validation input', () => {
+  assert.equal(endpointErrorMessage({detail: {message: 'State and questions exceed the Laya context window.'}}), 'State and questions exceed the Laya context window.');
+  assert.equal(endpointErrorMessage({detail: [{msg: 'Field required', input: 'secret prompt'}]}), 'Field required');
+  assert.equal(endpointErrorMessage({detail: 'bad key secret-value'}, 'secret-value'), 'bad key [REDACTED]');
 });

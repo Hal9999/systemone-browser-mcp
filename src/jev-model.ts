@@ -90,7 +90,8 @@ export function parseText(value: string): string {
 
 
 export class PolicyError extends Error {
-  constructor(public code: string, message: string) { super(message); }
+  code: string;
+  constructor(code: string, message: string) { super(message); this.code = code; }
 }
 export function parseDecision(result: any, questions: ReturnType<typeof buildQuestions>, observation: Observation): Decision {
   if (result.truncated) throw new PolicyError("systemone_truncated", "SystemOne truncated the observation; decision rejected. Reduce observation and question size.");

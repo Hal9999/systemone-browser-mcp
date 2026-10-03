@@ -102,6 +102,15 @@ export function parseDecision(result: any, questions: ReturnType<typeof buildQue
   const target = observation.targets.find(t => `${t.operation}:${t.id}` === answer.choice);
   return { operation: target?.operation ?? answer.choice, target, probability: answer.probabilities?.[answer.choice], providerConfidence: answer.confidence };
 }
+export function endpointErrorMessage(payload: any, key?: string): string | undefined {
+  // Extract only the server message, never Pydantic input values or request bodies.
+  const detail = payload?.detail ?? payload?.error;
+  let message = typeof detail === 'string' ? detail : detail?.message;
+  if (Array.isArray(detail)) message = detail.map(item => typeof item.msg === 'string' ? item.msg : '').filter(Boolean).join('; ');
+  if (typeof message !== 'string') return undefined;
+  if (key) message = message.split(key).join('[REDACTED]');
+  return message.replace(/sk-[A-Za-z0-9_-]+/g, '[REDACTED]').replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]').slice(0, 1200);
+}
 async function post(url: string, key: string | undefined, body: unknown, signal: AbortSignal) {
   const started = performance.now();
   const endpoint = endpointAddress(url);
@@ -115,7 +124,10 @@ async function post(url: string, key: string | undefined, body: unknown, signal:
   log(response.ok ? 'info' : 'error', 'ai.response', { endpoint, status: response.status, latencyMs: Math.round(performance.now() - started) });
   if (!response.ok) {
     const hints: Record<number, string> = { 401: "Check API key.", 403: "Check API permissions.", 404: "Check endpoint URL and model name.", 422: "Request rejected: check model name and SystemOne schema/limits.", 503: "Model may be loading or unavailable.", 529: "SystemOne is busy." };
-    throw new PolicyError(`http_${response.status}`, `AI endpoint returned HTTP ${response.status}. ${hints[response.status] ?? "Check Unsloth server logs."}`);
+    let serverMessage: string | undefined;
+    try { serverMessage = endpointErrorMessage(await response.json(), key); } catch { /* Non-JSON error: use status hint. */ }
+    log('error', 'ai.request_rejected', { endpoint, status: response.status, serverMessage });
+    throw new PolicyError(`http_${response.status}`, `AI endpoint returned HTTP ${response.status}. ${serverMessage ?? hints[response.status] ?? "Check Unsloth server logs."}`);
   }
   try { return await response.json(); } catch { throw new PolicyError("invalid_json", "AI endpoint returned invalid JSON."); }
 }

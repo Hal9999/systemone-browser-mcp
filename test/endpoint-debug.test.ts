@@ -17,7 +17,7 @@ test('external endpoints retain configuration and SystemOne payload logs are deb
     Object.assign(process.env, { SYSTEMONE_URL: 'http://decision.test/v1/systemone',
       SYSTEMONE_API_KEY: 'decision-secret', SYSTEMONE_MODEL: 'external-model',
       OPENAI_BASE_URL: 'http://text.test/v1', OPENAI_API_KEY: 'text-secret',
-      TEXT_MODEL: 'text-model', LOG_LEVEL: 'debug' });
+      TEXT_MODEL: 'text-model', LOG_LEVEL: 'debug', LOG_FORMAT: 'json' });
     delete process.env.SYSTEMONE_MAX_LEN;
     delete process.env.SYSTEMONE_HEAD_MAX_LEN;
     process.stderr.write = ((chunk: any) => { logs.push(String(chunk)); return true; }) as typeof process.stderr.write;
@@ -43,6 +43,17 @@ test('external endpoints retain configuration and SystemOne payload logs are deb
     assert.equal(await policy.text(observation, 'Search microfono usb', observation.targets[0], [], new AbortController().signal), 'microfono usb');
     assert.equal(calls.at(-1)?.url, 'http://text.test/v1/chat/completions');
     assert.equal(calls.at(-1)?.headers.Authorization, 'Bearer text-secret');
+    const textLogs = logs.map(line => JSON.parse(line)).filter(line => line.event.startsWith('text_helper.'));
+    assert.equal(textLogs.length, 2);
+    assert.equal(textLogs[0].requestId, textLogs[1].requestId);
+    assert.equal(textLogs[1].body.choices[0].message.content, '{"text":"microfono usb"}');
+    assert.ok(!logs.join('').includes('text-secret'));
+    const context = JSON.parse(calls.at(-1)?.body.messages[1].content);
+    assert.equal(context.field.label, 'Search');
+    assert.ok(!('targets' in context.page));
+    assert.ok(!('text' in context.page));
+    assert.ok(!('id' in context.field));
+
     assert.ok(!logs.join('').includes('systemone.request'));
     logs.length = 0;
     status = 422;
@@ -54,6 +65,8 @@ test('external endpoints retain configuration and SystemOne payload logs are deb
     await policy.choose(observation, 'Search', [], new AbortController().signal);
     assert.ok(!logs.join('').includes('systemone.request'));
     assert.ok(!logs.join('').includes('systemone.response'));
+    await policy.text(observation, 'Search', observation.targets[0], [], new AbortController().signal);
+    assert.ok(!logs.join('').includes('text_helper.'));
   } finally {
     globalThis.fetch = savedFetch;
     process.stderr.write = savedWrite;

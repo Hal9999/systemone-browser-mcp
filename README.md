@@ -72,7 +72,7 @@ Adapted from https://github.com/cline/plugins/tree/main/plugins/jev-browser at c
 
 Logs go to **stderr** (JSON by default, or a readable colored format). MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. At info level they exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
 
-Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne token-count metadata and full request/response JSON bodies, correlated by `requestId`, including JSON error responses. This is logged by the MCP HTTP client, so it also works with an external SystemOne server. Authorization headers are never logged; payloads contain goals and page content. Text-generation request/response bodies are not logged.
+Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne token-count metadata and full request/response JSON bodies, correlated by `requestId`, including JSON error responses. This is logged by the MCP HTTP client, so it also works with an external SystemOne server. Authorization headers are never logged; payloads contain goals and page content. Debug also logs text-generation prompts and complete JSON responses as `text_helper.request` and `text_helper.response`, correlated by `requestId`; authorization headers are omitted.
 
 ```bash
 docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}"
@@ -125,3 +125,7 @@ Each SystemOne choice question contains at most 26 candidates by default (`SYSTE
 Set `LOG_FORMAT=pretty` and `LOG_COLOR=always` in `.env`, then reconnect the MCP container. Pretty logs show timestamps, colored levels (debug cyan, info green, warnings yellow, errors red), event names, inline scalar fields and indented object payloads. Stdout remains reserved for MCP.
 
 `LOG_COLOR=auto` enables colors only when stderr is a terminal and `NO_COLOR` is unset; `never` disables colors. Use `always` for `docker logs -f` because MCP containers have no TTY. Some log viewers may not render ANSI colors; use `never` there. `LOG_FORMAT=json` restores single-line JSON without ANSI codes regardless of the color setting. Existing `.env` files must be updated manually.
+
+## Text field generation
+
+The text helper receives only the user goal, selected field label/role/current value/option, page title and selected options. Other targets, target IDs, page links, full page text and action history are excluded. It returns only the value for that field. Decision selection and original Playwright targets remain separate. `LOG_LEVEL=debug` exposes the actual prompts and JSON responses; this can include entered text and goal content.

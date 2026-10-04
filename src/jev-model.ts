@@ -87,6 +87,38 @@ export function buildQuestions(observation: Observation, goal: string, actions =
   };
 }
 
+
+// Compare winners again; probabilities from separate groups are not comparable.
+export async function selectCandidate(
+  questions: ReturnType<typeof buildQuestions>,
+  limit: number,
+  evaluate: (questions: ReturnType<typeof buildQuestions>) => Promise<any>,
+): Promise<any> {
+  if (!Number.isInteger(limit) || limit < 2 || limit > 26) throw new Error('Invalid candidate limit');
+  let entries = Object.entries(questions.action.criteria);
+  let round = 0;
+  while (entries.length > limit) {
+    const winners: typeof entries = [];
+    log('debug', 'systemone.selection_round', { round: ++round, candidates: entries.length, limit });
+    for (let offset = 0; offset < entries.length; offset += limit) {
+      const group = entries.slice(offset, offset + limit);
+      if (group.length === 1) { winners.push(group[0]); continue; }
+      const subset = { action: { ...questions.action, criteria: Object.fromEntries(group) } };
+      const result = await evaluate(subset);
+      if (result.truncated || result.usage?.truncated)
+        throw new PolicyError('systemone_truncated', 'SystemOne truncated a candidate group.');
+      const answer = result.answers?.action;
+      const winner = group.find(([key]) => key === answer?.choice);
+      if (answer?.type !== 'choice' || !winner)
+        throw new PolicyError('invalid_decision', 'SystemOne selected an action outside the candidate group.');
+      winners.push(winner);
+    }
+    entries = winners;
+  }
+  const finalists = { action: { ...questions.action, criteria: Object.fromEntries(entries) } };
+  return evaluate(finalists);
+}
+
 export interface Decision {
 	operation: string;
 	target?: ObservedTarget;
@@ -176,10 +208,19 @@ export function createJevPolicy(): JevPolicy {
     async choose(observation, goal, history, signal) {
       const actions = buildActions(observation);
       const questions = buildQuestions(observation, goal, actions);
-      const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
-        ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),
-        ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}), state: JSON.stringify(buildDecisionState(observation, history)), questions }, signal, true);
-      log('debug', 'systemone.response_metadata', { truncated: (result as any).truncated, inputTokens: (result as any).usage?.input_tokens, offeredActions: Object.keys(questions.action.criteria).length });
+      const limit = Number(process.env.SYSTEMONE_MAX_CANDIDATES ?? 26);
+      if (!Number.isInteger(limit) || limit < 2 || limit > 26)
+        throw new PolicyError('invalid_candidate_limit', 'SYSTEMONE_MAX_CANDIDATES must be an integer from 2 to 26.');
+      const evaluate = async (subset: typeof questions) => {
+        const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
+          ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),
+          ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}),
+          state: JSON.stringify(buildDecisionState(observation, history)), questions: subset }, signal, true);
+        parseDecision(result, subset, observation, actions);
+        log('debug', 'systemone.response_metadata', { inputTokens: result.usage?.input_tokens, offeredActions: Object.keys(subset.action.criteria).length });
+        return result;
+      };
+      const result = await selectCandidate(questions, limit, evaluate);
       return parseDecision(result, questions, observation, actions);
     },
     async text(observation, goal, target, history, signal) {

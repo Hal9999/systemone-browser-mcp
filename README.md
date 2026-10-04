@@ -115,3 +115,7 @@ Existing `.env` files are not replaced by Git: add `SCREENSHOTS_ENABLED=true` ma
 ## Compact decision representation
 
 SystemOne choice criteria are short semantic strings keyed by stable action IDs (for example `CLICK:15`). Instructions are a string compatible with Ollama decision models. The decision state includes page text, title, normalized page address, selected options, offscreen hints and recent actions, without duplicating actionable targets. Descriptions preserve control values and selection/expansion state. Link destinations appear only for ambiguous or duplicate labels and contain host/path without query strings or fragments. Original targets and URLs remain in the local action map for execution and in browser evidence; model descriptions never become selectors. The text helper continues to use its OpenAI-compatible endpoint.
+
+## Candidate limits
+
+Each SystemOne choice question contains at most 26 candidates by default (`SYSTEMONE_MAX_CANDIDATES`, integer 2–26). Larger sets are evaluated in groups and their winners are compared in a final question before any browser action executes. No candidate is dropped before evaluation; singleton groups advance directly. This adds inference calls and is an approximate hierarchical selection, not a global ranking. The reported probability is conditional on the final candidate set, so `minProbability` is not a globally calibrated confidence. All rounds share the run timeout and existing observation freshness checks.

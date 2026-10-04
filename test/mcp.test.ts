@@ -10,5 +10,8 @@ test('stdio MCP initializes, lists tools and returns idle state', async () => {
     assert.deepEqual(tools.tools.map(t => t.name).sort(), ['browser_cancel', 'browser_run', 'browser_status']);
     const state = await client.callTool({ name: 'browser_status', arguments: {} });
     assert.equal(JSON.parse((state.content as any[])[0].text).running, false);
+    const missingUrl = await client.callTool({ name: 'browser_run', arguments: { goal: 'Go to subito.it' } });
+    assert.equal(missingUrl.isError, true);
+    assert.equal(JSON.parse((missingUrl.content as any[])[0].text).error, 'url_required');
   } finally { await client.close(); }
 });

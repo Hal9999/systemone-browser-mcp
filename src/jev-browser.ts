@@ -100,6 +100,15 @@ export async function waitForPageReady(page: Page, signal?: AbortSignal) {
 								(e as HTMLInputElement).value, (e as HTMLInputElement).disabled,
 								e.getAttribute('href'), e.textContent]),
 					]);
+					// A blank document can be fully loaded and stable, but offers no
+					// usable evidence to the decision model. Keep waiting for content.
+					if (!document.body.innerText.trim() &&
+						!Array.from(document.querySelectorAll('input,textarea,select,button,a[href],[role],[contenteditable="true"]')).some(visible)) {
+						unchangedSince = 0;
+						previous = '';
+						await new Promise(resolve => setTimeout(resolve, 100));
+						continue;
+					}
 					if (signature !== previous) { previous = signature; unchangedSince = now; }
 					if (now - sinceLoad >= minimumMs && now - unchangedSince >= stableMs) return true;
 				}

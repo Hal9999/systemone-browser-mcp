@@ -2,6 +2,8 @@
 
 Standalone MCP server adapting the autonomous browser loop from Cline's `jev-browser`. Playwright observes and operates the page; a configurable `/v1/systemone` backend selects actions. An OpenAI-compatible text model fills non-sensitive text fields. No Cline plugin or Typesafe Gateway key is required.
 
+To open a website, pass `url` explicitly to `browser_run` (for example `{"goal":"Search for a USB microphone in Torino","url":"https://www.subito.it/"}`). Mentioning a website only in `goal` does not navigate. Omitting `url` continues an existing HTTP/HTTPS page; if none is open, the tool returns `url_required` immediately. Blank pages wait for visible text or controls within the readiness timeout; empty observations are never sent to SystemOne.
+
 ## Local setup
 
 Requires Node.js 22.18+ (24 recommended), an active SystemOne API and a text model for search/form fields.

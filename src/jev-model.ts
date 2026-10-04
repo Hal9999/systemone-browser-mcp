@@ -222,6 +222,8 @@ export function createJevPolicy(): JevPolicy {
   const key = process.env.SYSTEMONE_API_KEY;
   return {
     async choose(observation, goal, history, signal) {
+      if (!observation.text.trim() && observation.targets.length === 0)
+        throw new PolicyError('empty_page', 'Page has no visible text or actionable controls; no decision request was sent. Check navigation and loading.');
       const actions = buildActions(observation);
       const questions = buildQuestions(observation, goal, actions);
       const limit = Number(process.env.SYSTEMONE_MAX_CANDIDATES ?? 26);

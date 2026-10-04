@@ -70,7 +70,7 @@ Adapted from https://github.com/cline/plugins/tree/main/plugins/jev-browser at c
 
 ## Docker logs
 
-Structured JSON logs go to **stderr**. MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. At info level they exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
+Logs go to **stderr** (JSON by default, or a readable colored format). MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. At info level they exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
 
 Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne token-count metadata and full request/response JSON bodies, correlated by `requestId`, including JSON error responses. This is logged by the MCP HTTP client, so it also works with an external SystemOne server. Authorization headers are never logged; payloads contain goals and page content. Text-generation request/response bodies are not logged.
 
@@ -119,3 +119,9 @@ SystemOne choice criteria are short semantic strings keyed by stable action IDs 
 ## Candidate limits
 
 Each SystemOne choice question contains at most 26 candidates by default (`SYSTEMONE_MAX_CANDIDATES`, integer 9–26). The first round evaluates up to the limit. Each later round carries the eight highest-probability options from the immediately preceding round and adds up to `limit - 8` new candidates. The last round selects the action directly; there is no extra winners-only final. All initial candidates are offered at least once. Probabilities are ranked only within one response, never compared across groups; complete valid probabilities are required for intermediate rounds. This is approximate selection and adds inference calls. The final probability is conditional on the last candidate set, not globally calibrated. All rounds share the run timeout and existing observation freshness checks.
+
+## Colored logs
+
+Set `LOG_FORMAT=pretty` and `LOG_COLOR=always` in `.env`, then reconnect the MCP container. Pretty logs show timestamps, colored levels (debug cyan, info green, warnings yellow, errors red), event names, inline scalar fields and indented object payloads. Stdout remains reserved for MCP.
+
+`LOG_COLOR=auto` enables colors only when stderr is a terminal and `NO_COLOR` is unset; `never` disables colors. Use `always` for `docker logs -f` because MCP containers have no TTY. Some log viewers may not render ANSI colors; use `never` there. `LOG_FORMAT=json` restores single-line JSON without ANSI codes regardless of the color setting. Existing `.env` files must be updated manually.

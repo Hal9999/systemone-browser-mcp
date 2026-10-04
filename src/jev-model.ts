@@ -88,35 +88,43 @@ export function buildQuestions(observation: Observation, goal: string, actions =
 }
 
 
-// Compare winners again; probabilities from separate groups are not comparable.
+// Carry the top eight from the immediately preceding comparison, never
+// compare probabilities produced by different candidate sets.
 export async function selectCandidate(
   questions: ReturnType<typeof buildQuestions>,
   limit: number,
   evaluate: (questions: ReturnType<typeof buildQuestions>) => Promise<any>,
 ): Promise<any> {
-  if (!Number.isInteger(limit) || limit < 2 || limit > 26) throw new Error('Invalid candidate limit');
-  let entries = Object.entries(questions.action.criteria);
+  if (!Number.isInteger(limit) || limit < 9 || limit > 26)
+    throw new Error('Candidate limit must be from 9 to 26 to carry eight options.');
+  const entries = Object.entries(questions.action.criteria);
+  let offset = 0;
+  let carried: typeof entries = [];
   let round = 0;
-  while (entries.length > limit) {
-    const winners: typeof entries = [];
-    log('debug', 'systemone.selection_round', { round: ++round, candidates: entries.length, limit });
-    for (let offset = 0; offset < entries.length; offset += limit) {
-      const group = entries.slice(offset, offset + limit);
-      if (group.length === 1) { winners.push(group[0]); continue; }
-      const subset = { action: { ...questions.action, criteria: Object.fromEntries(group) } };
-      const result = await evaluate(subset);
-      if (result.truncated || result.usage?.truncated)
-        throw new PolicyError('systemone_truncated', 'SystemOne truncated a candidate group.');
-      const answer = result.answers?.action;
-      const winner = group.find(([key]) => key === answer?.choice);
-      if (answer?.type !== 'choice' || !winner)
-        throw new PolicyError('invalid_decision', 'SystemOne selected an action outside the candidate group.');
-      winners.push(winner);
-    }
-    entries = winners;
+  while (offset < entries.length) {
+    const fresh = entries.slice(offset, offset + limit - carried.length);
+    offset += fresh.length;
+    const group = [...carried, ...fresh];
+    const subset = { action: { ...questions.action, criteria: Object.fromEntries(group) } };
+    log('debug', 'systemone.selection_round', {
+      round: ++round, candidates: group.length, carried: carried.map(([key]) => key),
+      newCandidates: fresh.length, remaining: entries.length - offset, limit,
+    });
+    const result = await evaluate(subset);
+    if (result.truncated || result.usage?.truncated)
+      throw new PolicyError('systemone_truncated', 'SystemOne truncated a candidate group.');
+    const answer = result.answers?.action;
+    if (answer?.type !== 'choice' || !group.some(([key]) => key === answer.choice))
+      throw new PolicyError('invalid_decision', 'SystemOne selected an action outside the candidate group.');
+    // The last evaluated group is the final decision; no tiny winners-only round.
+    if (offset === entries.length) return result;
+    if (group.some(([key]) => typeof answer.probabilities?.[key] !== 'number'
+        || !Number.isFinite(answer.probabilities[key])
+        || answer.probabilities[key] < 0 || answer.probabilities[key] > 1))
+      throw new PolicyError('invalid_probabilities', 'SystemOne must return valid probabilities for every candidate to carry the top eight.');
+    carried = [...group].sort((a, b) => answer.probabilities[b[0]] - answer.probabilities[a[0]]).slice(0, 8);
   }
-  const finalists = { action: { ...questions.action, criteria: Object.fromEntries(entries) } };
-  return evaluate(finalists);
+  throw new PolicyError('invalid_candidates', 'No candidates were offered.');
 }
 
 export interface Decision {
@@ -209,8 +217,8 @@ export function createJevPolicy(): JevPolicy {
       const actions = buildActions(observation);
       const questions = buildQuestions(observation, goal, actions);
       const limit = Number(process.env.SYSTEMONE_MAX_CANDIDATES ?? 26);
-      if (!Number.isInteger(limit) || limit < 2 || limit > 26)
-        throw new PolicyError('invalid_candidate_limit', 'SYSTEMONE_MAX_CANDIDATES must be an integer from 2 to 26.');
+      if (!Number.isInteger(limit) || limit < 9 || limit > 26)
+        throw new PolicyError('invalid_candidate_limit', 'SYSTEMONE_MAX_CANDIDATES must be an integer from 9 to 26.');
       const evaluate = async (subset: typeof questions) => {
         const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
           ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),

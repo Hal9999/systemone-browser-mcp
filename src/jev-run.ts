@@ -204,7 +204,6 @@ export async function runJev(
 				}
 				executed++;
 				entry.status = "executed";
-				await options.onStep?.({ ...entry });
 				// Let event handlers render before the next read, without screenshot or network-idle waits.
 				await delay(
 					decision.target?.role === "radio" || decision.operation === "SELECT"
@@ -221,6 +220,8 @@ export async function runJev(
 				stage = "post_action_observation";
 				const after = await observe(options.page(), signal);
 				try {
+					// Capture executed screenshots only after the resulting page settles.
+					await options.onStep?.({ ...entry });
 					memory.actions.push({
 						action: decision.target?.label ?? decision.operation,
 						kind: decision.operation,

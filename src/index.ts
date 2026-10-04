@@ -6,7 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { runJev } from './jev-run.ts';
-import { observe } from './jev-browser.ts';
+import { observe, waitForPageReady } from './jev-browser.ts';
 
 const server = new McpServer({ name: 'systemone-browser-mcp', version: '0.1.0' });
 let browser: Browser | undefined;
@@ -51,6 +51,7 @@ server.registerTool('browser_run', {
         log('info', 'navigation.completed');
       }
       current.controller.signal.throwIfAborted();
+      await waitForPageReady(active, current.controller.signal);
       await screenshots.capture(page, 'initial');
       current.result = await runJev({ goal, maxSteps, minProbability }, { page: () => page!, signal: current.controller.signal, onStep: async step => { current.trace.push(step); if (['decision', 'executed', 'stale'].includes(step.status)) await screenshots.capture(page, `step-${step.step}-${step.status}-${step.operation}`); log('info', 'browser.step', { step: step.step, operation: step.operation, status: step.status, probability: step.probability, latencyMs: step.latencyMs }); } });
     } catch (error) { log('error', 'browser.initialization_failed', { errorType: error instanceof Error ? error.name : 'UnknownError' }); current.result = { status: 'interrupted', message: 'Browser initialization or navigation failed. Check browser installation and URL.' }; }

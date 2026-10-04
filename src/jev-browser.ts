@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Page } from "playwright";
+import { log } from './logger.ts';
 
 export type TargetOperation = "CLICK" | "TYPE_TEXT" | "SELECT";
 export interface ObservedTarget {
@@ -50,12 +51,76 @@ export async function waitForDocument(page: Page, signal?: AbortSignal) {
 	signal?.throwIfAborted();
 }
 
+// Load completion alone does not prove hydration. Require a minimum grace
+// period plus stable visible content/controls; fail rather than act on timeout.
+export async function waitForPageReady(page: Page, signal?: AbortSignal) {
+	const setting = (name: string, fallback: number) => {
+		const value = Number(process.env[name] ?? fallback);
+		if (!Number.isFinite(value) || value < 0 || value > 60000)
+			throw new Error(`${name} must be between 0 and 60000 milliseconds.`);
+		return value;
+	};
+	const config = {
+		minimumMs: setting('PAGE_READY_MIN_MS', 2000),
+		stableMs: setting('PAGE_READY_STABLE_MS', 750),
+	};
+	const timeout = setting('PAGE_READY_TIMEOUT_MS', 20000);
+	if (timeout <= Math.max(config.minimumMs, config.stableMs))
+		throw new Error('PAGE_READY_TIMEOUT_MS must exceed the readiness intervals.');
+	signal?.throwIfAborted();
+	const started = performance.now();
+	log('debug', 'browser.readiness_started', { ...config, timeoutMs: timeout });
+	try {
+		const ready = await page.waitForFunction(async ({ minimumMs, stableMs, timeoutMs }) => {
+			const deadline = performance.now() + timeoutMs;
+			let sinceLoad = 0;
+			let unchangedSince = 0;
+			let previous = '';
+			const visible = (e: Element) => {
+				const r = e.getBoundingClientRect();
+				return e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) &&
+					r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight &&
+					r.right > 0 && r.left < innerWidth;
+			};
+			for (;;) {
+				const now = performance.now();
+				if (now >= deadline) return false;
+				if (document.readyState !== 'complete' || !document.body ||
+					Array.from(document.querySelectorAll('[aria-busy="true"]')).some(visible)) {
+					sinceLoad = unchangedSince = 0;
+					previous = '';
+				} else {
+					if (!sinceLoad) sinceLoad = now;
+					const signature = JSON.stringify([
+						location.href, document.title, document.body.innerText,
+						Array.from(document.querySelectorAll('input,textarea,select,button,a[href],[role],[contenteditable="true"]'))
+							.filter(visible).map(e => [e.tagName, e.getAttribute('role'),
+								e.getAttribute('aria-label'), e.getAttribute('aria-expanded'),
+								e.getAttribute('aria-selected'), e.getAttribute('aria-disabled'),
+								(e as HTMLInputElement).value, (e as HTMLInputElement).disabled,
+								e.getAttribute('href'), e.textContent]),
+					]);
+					if (signature !== previous) { previous = signature; unchangedSince = now; }
+					if (now - sinceLoad >= minimumMs && now - unchangedSince >= stableMs) return true;
+				}
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+		}, { ...config, timeoutMs: timeout }, { timeout, polling: 100 });
+		await ready.dispose();
+		signal?.throwIfAborted();
+		log('debug', 'browser.readiness_completed', { elapsedMs: Math.round(performance.now() - started) });
+	} catch (error) {
+		log('warn', 'browser.readiness_failed', { elapsedMs: Math.round(performance.now() - started), errorType: error instanceof Error ? error.name : 'UnknownError' });
+		throw error;
+	}
+}
+
 // Retry only reads invalidated by document replacement, never a browser action.
 export async function observe(page: Page, signal?: AbortSignal) {
 	for (let attempt = 0; ; attempt++) {
 		signal?.throwIfAborted();
 		try {
-			await waitForDocument(page, signal);
+			await waitForPageReady(page, signal);
 			return await observeDocument(page);
 		} catch (error) {
 			if (

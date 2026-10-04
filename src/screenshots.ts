@@ -3,9 +3,13 @@ import { join, resolve } from 'node:path';
 import type { Page } from 'playwright';
 import { log } from './logger.ts';
 
-export function createScreenshots(jobId: string) {
+export function createScreenshots(jobId: string, startedAt = new Date()) {
   const enabled = process.env.SCREENSHOTS_ENABLED === 'true';
-  const directory = join(resolve(process.env.ARTIFACTS_DIR ?? '/app/artifacts'), jobId);
+  const timeZone = process.env.ARTIFACTS_TIMEZONE ?? 'UTC';
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(startedAt);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const folder = `${values.year}_${values.month}_${values.day}_${values.hour}_${values.minute}_${values.second}_${jobId}`;
+  const directory = join(resolve(process.env.ARTIFACTS_DIR ?? '/app/artifacts'), folder);
   const files: string[] = [];
   let sequence = 0;
   return {
@@ -18,13 +22,13 @@ export function createScreenshots(jobId: string) {
         await mkdir(directory, { recursive: true });
         stage = 'capture';
         await page.screenshot({ path: join(directory, filename), fullPage: false, timeout: 5000, animations: 'disabled' });
-        files.push(join(jobId, filename));
-        log('info', 'screenshot.saved', { file: join(jobId, filename) });
+        files.push(join(folder, filename));
+        log('info', 'screenshot.saved', { file: join(folder, filename) });
       } catch (error) {
         const fsError = error as NodeJS.ErrnoException;
         const code = typeof fsError?.code === 'string' ? fsError.code : undefined;
         log('warn', 'screenshot.failed', {
-          file: join(jobId, filename), directory, stage, code,
+          file: join(folder, filename), directory, stage, code,
           syscall: fsError?.syscall,
           errorType: error instanceof Error ? error.name : 'UnknownError',
           hint: code === 'EACCES' || code === 'EPERM'

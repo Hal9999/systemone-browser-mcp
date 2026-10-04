@@ -124,7 +124,7 @@ export async function runJev(
 					status: "decision",
 					latencyMs: Math.round(performance.now() - decisionStarted),
 				});
-				if (!["CLICK", "SELECT"].includes(decision.operation))
+				if (!["CLICK", "SELECT", "TYPE_TEXT"].includes(decision.operation))
 					await snapshot.assertFresh();
 				if (page !== options.page())
 					throw new StaleObservationError("Active tab changed.");

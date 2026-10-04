@@ -359,7 +359,9 @@ async function observeDocument(page: Page) {
 				const nodeHandle = await handle
 					.evaluateHandle((h, target) => {
 						const current = h.read();
-						if (target === undefined || target.operation === "TYPE_TEXT") {
+						// Targeted actions validate the retained node and form below.
+						// Unrelated page updates must not veto text generated while waiting.
+						if (target === undefined) {
 							if (
 								current.signature !== h.original.signature ||
 								current.nodes.length !== h.original.nodes.length ||

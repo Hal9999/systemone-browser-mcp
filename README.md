@@ -49,7 +49,7 @@ Use `docker` as the MCP command with args `run`, `--rm`, `-i`, `--env-file`, the
 - `browser_status()`: returns running state, trace, outcome and, after the task stops, the current page observation.
 - `browser_cancel()`: requests cancellation. Poll status until stopped before starting another task.
 
-There is one browser and one active task per server process. Pages are retained between tasks; browser profiles are ephemeral. Each run has a 100-second browser-loop timeout and 1–60 action budget (default 20), with bounded stale-observation retries. Cancellation is cooperative; an in-flight Playwright call may finish first.
+There is one browser and one active task per server process. Pages are retained between tasks; browser profiles are ephemeral. Each run has a browser-loop timeout of 100 seconds by default (configurable with `RUN_TIMEOUT_MS`) and 1–60 action budget (default 20), with bounded stale-observation retries. Cancellation is cooperative; an in-flight Playwright call may finish first.
 
 `done_unverified` is a model judgment, not proof of success. The calling agent must verify the returned page evidence. The original REVIEW behavior is retained for sensitive or consequential actions; it returns control to the caller rather than executing them. This is a policy safeguard, not a security sandbox. Only HTTP/HTTPS starting URLs are accepted; network access is not otherwise isolated.
 
@@ -70,9 +70,9 @@ Adapted from https://github.com/cline/plugins/tree/main/plugins/jev-browser at c
 
 ## Docker logs
 
-Structured JSON logs go to **stderr**. MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. They exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
+Structured JSON logs go to **stderr**. MCP protocol messages remain on stdout. Logs contain timestamps, event names, job IDs, action types, HTTP status and latency. At info level they exclude API keys, request/response bodies, goals, page text, field values and target labels. Endpoint query strings and credentials are omitted.
 
-Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne truncation/token-count metadata without dumping content.
+Set `LOG_LEVEL=info` (default), `debug`, `warn`, `error` or `silent` in `.env`. Debug adds SystemOne token-count metadata and full request/response JSON bodies, correlated by `requestId`, including JSON error responses. This is logged by the MCP HTTP client, so it also works with an external SystemOne server. Authorization headers are never logged; payloads contain goals and page content. Text-generation request/response bodies are not logged.
 
 ```bash
 docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}"
@@ -86,3 +86,28 @@ docker logs -f --tail 100 CONTAINER_ID 1>$null
 ```
 
 With `--rm`, Docker removes the container and its logs when it exits. Inspect logs while the MCP connection is active. For manual diagnosis, omit `--rm` and optionally give the container a name; remove it afterwards.
+
+## Compose shortcut
+
+```bash
+docker compose build
+docker compose run --rm -T browser
+```
+
+Compose loads `.env`, uses external SystemOne and OpenAI-compatible text endpoints, and bind-mounts `./artifacts:/app/artifacts`. Use `run`, not `up -d`, because MCP needs stdin/stdout. No model is installed or started inside the container.
+
+For an MCP client, use command `docker` with arguments:
+
+```json
+["compose", "--project-directory", "C:/absolute/path/systemone-browser-mcp", "-f", "C:/absolute/path/systemone-browser-mcp/compose.yaml", "run", "--rm", "-T", "browser"]
+```
+
+`SYSTEMONE_URL`, `SYSTEMONE_API_KEY` and `SYSTEMONE_MODEL` configure decisions; `OPENAI_BASE_URL`, `OPENAI_API_KEY` and `TEXT_MODEL` configure text generation. Optional `SYSTEMONE_MAX_LEN` and `SYSTEMONE_HEAD_MAX_LEN` are forwarded only when set; supported limits depend on the external backend.
+
+## Optional screenshots
+
+Set `SCREENSHOTS_ENABLED=true` in `.env` and reconnect the MCP container. The default is disabled. Compose bind-mounts `./artifacts` from the project directory at `/app/artifacts`; screenshots are regular local files, not a Docker volume.
+
+Each task creates `artifacts/JOB_ID/` with numbered viewport PNGs: initial page, decisions (including terminal decisions), executed actions, stale observations and final page. The executed image is taken immediately after the action; the next decision image shows the later rendered page. `browser_status` lists paths relative to the artifacts directory. Logs include `screenshot.saved` or `screenshot.failed`. Capture failures warn without interrupting navigation.
+
+Existing `.env` files are not replaced by Git: add `SCREENSHOTS_ENABLED=true` manually. With plain Docker, add `-v ABSOLUTE_LOCAL_ARTIFACTS_PATH:/app/artifacts`. On Linux, the bind directory must be writable by container user `node` (UID 1000); on Docker Desktop, use a shared writable directory. Screenshots can contain visible personal data and are not redacted. Screenshot capture is bounded to five seconds per image and adds some latency. No video or trace is enabled by this option.

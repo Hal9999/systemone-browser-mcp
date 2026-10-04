@@ -1,3 +1,4 @@
+import { createScreenshots } from './screenshots.ts';
 import { log, logContext } from './logger.ts';
 import { randomUUID } from 'node:crypto';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -10,7 +11,7 @@ import { observe } from './jev-browser.ts';
 const server = new McpServer({ name: 'systemone-browser-mcp', version: '0.1.0' });
 let browser: Browser | undefined;
 let page: Page | undefined;
-let job: { id: string; running: boolean; controller: AbortController; result?: unknown; trace: unknown[] } | undefined;
+let job: { id: string; running: boolean; controller: AbortController; result?: unknown; trace: unknown[]; screenshots: string[] } | undefined;
 const output = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 function validateUrl(value: string) {
   const url = new URL(value);
@@ -35,7 +36,9 @@ server.registerTool('browser_run', {
 }, async ({ goal, url, maxSteps, minProbability }) => {
   if (job?.running) return { ...output({ error: 'A task is already running.', jobId: job.id }), isError: true };
   const startUrl = url ? validateUrl(url) : undefined;
-  const current = { id: randomUUID(), running: true, controller: new AbortController(), trace: [] as unknown[], result: undefined as unknown };
+  const id = randomUUID();
+  const screenshots = createScreenshots(id);
+  const current = { screenshots: screenshots.files, id, running: true, controller: new AbortController(), trace: [] as unknown[], result: undefined as unknown };
   job = current;
   log('info', 'job.started', { jobId: current.id, maxSteps });
   void logContext.run({ jobId: current.id }, async () => {
@@ -48,9 +51,10 @@ server.registerTool('browser_run', {
         log('info', 'navigation.completed');
       }
       current.controller.signal.throwIfAborted();
-      current.result = await runJev({ goal, maxSteps, minProbability }, { page: () => page!, signal: current.controller.signal, onStep: async step => { current.trace.push(step); log('info', 'browser.step', { step: step.step, operation: step.operation, status: step.status, probability: step.probability, latencyMs: step.latencyMs }); } });
+      await screenshots.capture(page, 'initial');
+      current.result = await runJev({ goal, maxSteps, minProbability }, { page: () => page!, signal: current.controller.signal, onStep: async step => { current.trace.push(step); if (['decision', 'executed', 'stale'].includes(step.status)) await screenshots.capture(page, `step-${step.step}-${step.status}-${step.operation}`); log('info', 'browser.step', { step: step.step, operation: step.operation, status: step.status, probability: step.probability, latencyMs: step.latencyMs }); } });
     } catch (error) { log('error', 'browser.initialization_failed', { errorType: error instanceof Error ? error.name : 'UnknownError' }); current.result = { status: 'interrupted', message: 'Browser initialization or navigation failed. Check browser installation and URL.' }; }
-    finally { current.running = false; const result = current.result as any; log(result?.failure ? 'error' : 'info', 'job.finished', { status: result?.status, failure: result?.failure, elapsedMs: result?.elapsedMs }); }
+    finally { await screenshots.capture(page, 'final'); current.running = false; const result = current.result as any; log(result?.failure ? 'error' : 'info', 'job.finished', { status: result?.status, failure: result?.failure, elapsedMs: result?.elapsedMs }); }
   });
   return output({ jobId: current.id, running: true });
 });
@@ -60,7 +64,7 @@ server.registerTool('browser_status', { description: 'Get task trace and, once s
     const snapshot = await observe(page, AbortSignal.timeout(10000));
     try { observation = snapshot.data; } finally { await snapshot.dispose(); }
   }
-  return output({ jobId: job?.id, running: job?.running ?? false, trace: job?.trace, result: job?.result, observation });
+  return output({ jobId: job?.id, running: job?.running ?? false, trace: job?.trace, screenshots: job?.screenshots, result: job?.result, observation });
 });
 server.registerTool('browser_cancel', { description: 'Request cancellation of the current task. Poll status until running is false.', inputSchema: {} }, async () => {
   log('info', 'job.cancel_requested', { jobId: job?.id });

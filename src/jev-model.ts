@@ -10,49 +10,81 @@ Use DONE only when current page evidence confirms every requested requirement, i
 Use BLOCKED only when no offered action can advance the goal. A missing field may require changing section, opening a control or scrolling. Access denied or an unrecoverable error is a reason to stop; do not bypass restrictions or repeatedly submit a failed form.
 Use REVIEW before sending messages, posting, submitting orders or payments, booking, financial transactions, deletion, permission changes, sensitive data entry, CAPTCHA or security warnings. Return control to the MCP client for these actions.`;
 
-export function buildQuestions(observation: Observation, goal: string) {
-	const criteria: Record<string, string | Record<string, string | null>> = {
-		WAIT: "Wait briefly for loading or disabled controls to become ready.",
-
-		BLOCKED:
-			"No supported action can progress, including closing dialogs or scrolling.",
-		REVIEW:
-			"The next action requires sensitive data, submits an order/payment, or crosses a safety barrier.",
-	};
-	if (observation.text.trim())
-		criteria.DONE =
-			"Current visible page content proves every goal requirement. An attempted click alone is not proof.";
-	for (const target of observation.targets) {
-		if (target.role === "radio" && target.checked === "true") continue;
-		criteria[`${target.operation}:${target.id}`] = {
-			operation: target.operation,
-			label: target.label,
-			currentValue: target.value,
-			option: target.option ?? null,
-			role: target.role ?? null,
-			checked: target.checked ?? null,
-			selected: target.selected ?? null,
-			expanded: target.expanded ?? null,
-			href: target.href ?? null,
-		};
-	}
-	if (observation.scrollUp)
-		criteria.SCROLL_UP =
-			"Scroll up to find relevant controls or content when no visible control advances the goal; use offscreenControls as a direction hint.";
-	if (observation.scrollDown)
-		criteria.SCROLL_DOWN =
-			"Scroll down to find relevant controls or content when no visible control advances the goal; use offscreenControls as a direction hint.";
-	return {
-		action: {
-			type: "choice",
-			instructions: {
-				goal,
-				rules,
-				task: "Select the single offered action that makes the next concrete step toward the goal. Check what remains unsatisfied and choose the relevant control; use WAIT, DONE or BLOCKED only when their conditions are supported by the current page.",
-			},
-			criteria,
-		},
-	};
+function cleanText(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+export function normalizeHref(href?: string): string | undefined {
+  if (!href) return undefined;
+  try {
+    const url = new URL(href);
+    return ['http:', 'https:'].includes(url.protocol) ? url.hostname + url.pathname : undefined;
+  } catch { return undefined; }
+}
+function normalizeRole(role?: string) {
+  const names: Record<string, string> = { a: 'link', textbox: 'text field', radio: 'radio button' };
+  return role ? names[role] ?? role : 'control';
+}
+export function describeAction(target: ObservedTarget, includeDestination = false): string {
+  const label = cleanText(target.label) || '(unlabelled)';
+  const verb = target.operation === 'TYPE_TEXT' ? 'Type into' : 'Click';
+  let text = `${verb} ${normalizeRole(target.role)}: ${label}`;
+  if (target.value) text += ` [current: ${cleanText(target.value)}]`;
+  if (target.option) text += ` [option: ${cleanText(target.option)}]`;
+  for (const property of ['checked', 'selected', 'expanded'] as const) {
+    if (target[property] !== undefined) text += ` [${property}: ${target[property]}]`;
+  }
+  if (includeDestination && target.operation === 'CLICK') {
+    const destination = normalizeHref(target.href);
+    if (destination) text += ` [to: ${destination}]`;
+  }
+  return text;
+}
+export function buildActions(observation: Observation): Map<string, ObservedTarget> {
+  const actions = new Map<string, ObservedTarget>();
+  for (const target of observation.targets) {
+    if (target.role === 'radio' && target.checked === 'true') continue;
+    actions.set(`${target.operation}:${target.id}`, target);
+  }
+  return actions;
+}
+export function buildDecisionState(observation: Observation, history: unknown[]) {
+  return {
+    url: normalizeHref(observation.url) ?? '',
+    title: observation.title,
+    text: observation.text,
+    selectedOptions: observation.selectedOptions ?? [],
+    offscreenControls: observation.offscreenControls ?? { above: [], below: [] },
+    recentActions: history.slice(-10),
+  };
+}
+export function buildQuestions(observation: Observation, goal: string, actions = buildActions(observation)) {
+  const criteria: Record<string, string> = {
+    WAIT: 'Wait for loading or a temporarily disabled control',
+    BLOCKED: 'Stop because no available action can advance the goal',
+    REVIEW: 'Stop for user review before a sensitive or consequential action',
+  };
+  if (observation.text.trim())
+    criteria.DONE = 'Stop because visible page evidence proves the complete goal is satisfied';
+  const counts = new Map<string, number>();
+  for (const target of actions.values()) {
+    const label = cleanText(target.label).toLowerCase();
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  for (const [id, target] of actions) {
+    const label = cleanText(target.label).toLowerCase();
+    const ambiguous = !label || ['a', 'here', 'click here', 'learn more', 'read more', 'scopri', 'scopri di più'].includes(label)
+      || (counts.get(label) ?? 0) > 1;
+    criteria[id] = describeAction(target, ambiguous);
+  }
+  if (observation.scrollUp) criteria.SCROLL_UP = 'Scroll up to find more relevant controls or content';
+  if (observation.scrollDown) criteria.SCROLL_DOWN = 'Scroll down to find more relevant controls or content';
+  return {
+    action: {
+      type: 'choice',
+      instructions: `Goal: ${goal}\n${rules}\nSelect the single offered action that makes the next concrete step toward the goal.`,
+      criteria,
+    },
+  };
 }
 
 export interface Decision {
@@ -98,12 +130,12 @@ export class PolicyError extends Error {
   code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }
 }
-export function parseDecision(result: any, questions: ReturnType<typeof buildQuestions>, observation: Observation): Decision {
+export function parseDecision(result: any, questions: ReturnType<typeof buildQuestions>, observation: Observation, actions = buildActions(observation)): Decision {
   if (result.truncated) throw new PolicyError("systemone_truncated", "SystemOne truncated the observation; decision rejected. Reduce observation and question size.");
   const answer = result.answers?.action;
   if (answer?.type !== "choice" || typeof answer.choice !== "string" || !Object.hasOwn(questions.action.criteria, answer.choice))
     throw new PolicyError("invalid_decision", "SystemOne response did not contain an offered action.");
-  const target = observation.targets.find(t => `${t.operation}:${t.id}` === answer.choice);
+  const target = actions.get(answer.choice);
   return { operation: target?.operation ?? answer.choice, target, probability: answer.probabilities?.[answer.choice], providerConfidence: answer.confidence };
 }
 export function endpointErrorMessage(payload: any, key?: string): string | undefined {
@@ -142,12 +174,13 @@ export function createJevPolicy(): JevPolicy {
   const key = process.env.SYSTEMONE_API_KEY;
   return {
     async choose(observation, goal, history, signal) {
-      const questions = buildQuestions(observation, goal);
+      const actions = buildActions(observation);
+      const questions = buildQuestions(observation, goal, actions);
       const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
         ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),
-        ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}), state: JSON.stringify({ page: observation, recentActions: history.slice(-10) }), questions }, signal, true);
+        ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}), state: JSON.stringify(buildDecisionState(observation, history)), questions }, signal, true);
       log('debug', 'systemone.response_metadata', { truncated: (result as any).truncated, inputTokens: (result as any).usage?.input_tokens, offeredActions: Object.keys(questions.action.criteria).length });
-      return parseDecision(result, questions, observation);
+      return parseDecision(result, questions, observation, actions);
     },
     async text(observation, goal, target, history, signal) {
       const model = process.env.TEXT_MODEL;

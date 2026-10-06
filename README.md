@@ -108,6 +108,8 @@ For an MCP client, use command `docker` with arguments:
 
 ## Optional screenshots
 
+Set `SYSTEMONE_SEND_SCREENSHOT=true` to send the current browser viewport as a base64 PNG in the top-level `images` array of each `/v1/systemone` request. Default: false. Use an image-capable model such as Clef or Clef Flash. A fresh image is captured for each decision after the page readiness check and reused across that decision's candidate rounds; `state` is still sent. This is independent of `SCREENSHOTS_ENABLED`: model screenshots are captured in memory without creating artifact files. Capture failure interrupts the run at `decision_screenshot`; images are not silently dropped. Debug logs show image byte/encoded lengths rather than the base64 contents. Reconnect the MCP container after editing `.env`.
+
 Set `SCREENSHOTS_ENABLED=true` in `.env` and reconnect the MCP container. The default is disabled. Compose bind-mounts `./artifacts` from the project directory at `/app/artifacts`; screenshots are regular local files, not a Docker volume.
 
 Each task creates `artifacts/yyyy_mm_dd_hh_mm_ss_UUID/` with numbered viewport PNGs: initial page, decisions (including terminal decisions), executed actions, stale observations and final page. The timestamp is the task start time, using `ARTIFACTS_TIMEZONE` (default UTC; `.env.example` uses Europe/Rome). Initial and executed images wait for page readiness. `browser_status` lists the actual paths relative to the artifacts directory. Logs include `screenshot.saved` or `screenshot.failed`. Capture failures warn without interrupting navigation.

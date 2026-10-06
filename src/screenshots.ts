@@ -3,6 +3,14 @@ import { join, resolve } from 'node:path';
 import type { Page } from 'playwright';
 import { log } from './logger.ts';
 
+// Independent of artifact recording: no file is created for model input.
+export async function captureSystemOneImage(page: Page): Promise<string | undefined> {
+  if (process.env.SYSTEMONE_SEND_SCREENSHOT !== 'true') return undefined;
+  const png = await page.screenshot({ type: 'png', fullPage: false, timeout: 5000, animations: 'disabled' });
+  log('debug', 'systemone.screenshot_captured', { format: 'png', bytes: png.length });
+  return png.toString('base64');
+}
+
 export function createScreenshots(jobId: string, startedAt = new Date()) {
   const enabled = process.env.SCREENSHOTS_ENABLED === 'true';
   const timeZone = process.env.ARTIFACTS_TIMEZONE ?? 'UTC';

@@ -66,12 +66,6 @@ npm test
 
 Automated checks cover response parsing, candidate grouping, logging, image payloads, page readiness, screenshots and stdio MCP. Real backend compatibility and navigation quality still require testing against your model and website. HTTP MCP transport, persistent profiles and browser streaming are not included in this version. Browser operation remains experimental: repeated menu toggles can still consume turns, and page stability does not prove application hydration or task progress.
 
-## Optional Clef Flash workaround
-
-`fix_clef_flash.py` is a separate, opt-in utility for the Windows GGUF seek issue tracked in [ollama/ollama#18769](https://github.com/ollama/ollama/issues/18769) and [PR #18777](https://github.com/ollama/ollama/pull/18777). It is not used by the MCP server or Docker image. Read its module documentation before running it: it requires Python 3.7+, an installed Ollama model and substantial temporary disk space. It creates a separate reordered model without modifying the original; it does not quantize weights. Prefer an upstream Ollama fix when available.
-
-Run the utility's small synthetic-file regression tests with `python3 -m unittest discover -s test -p 'test_*.py'`. They verify tensor byte preservation and a clear failure on a truncated input; they do not validate real model inference.
-
 ## Attribution
 
 Adapted from https://github.com/cline/plugins/tree/main/plugins/jev-browser at commit `96bde661f630ec23c1ce0cd86a2361a9959ef65a`. See LICENSE and NOTICE. The upstream repository has Apache-2.0 licensing while the plugin package metadata declares MIT; this discrepancy is recorded rather than silently discarded.

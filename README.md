@@ -2,6 +2,8 @@
 
 Standalone MCP server adapting the autonomous browser loop from Cline's `jev-browser`. Playwright observes and operates the page; a configurable `/v1/systemone` backend selects actions. An OpenAI-compatible text model fills non-sensitive text fields. No Cline plugin or Typesafe Gateway key is required.
 
+To open a website, pass `url` explicitly to `browser_run` (for example `{"goal":"Search for a USB microphone in Torino","url":"https://www.subito.it/"}`). Mentioning a website only in `goal` does not navigate. Omitting `url` continues an existing HTTP/HTTPS page; if none is open, the tool returns `url_required` immediately. Blank pages wait for visible text or controls within the readiness timeout; empty observations are never sent to SystemOne.
+
 ## Local setup
 
 Requires Node.js 22.18+ (24 recommended), an active SystemOne API and a text model for search/form fields.
@@ -105,6 +107,8 @@ For an MCP client, use command `docker` with arguments:
 `SYSTEMONE_URL`, `SYSTEMONE_API_KEY` and `SYSTEMONE_MODEL` configure decisions; `OPENAI_BASE_URL`, `OPENAI_API_KEY` and `TEXT_MODEL` configure text generation. Optional `SYSTEMONE_MAX_LEN` and `SYSTEMONE_HEAD_MAX_LEN` are forwarded only when set; supported limits depend on the external backend.
 
 ## Optional screenshots
+
+Set `SYSTEMONE_SEND_SCREENSHOT=true` to send the current browser viewport as a base64 PNG in the top-level `images` array of each `/v1/systemone` request. Default: false. Use an image-capable model such as Clef or Clef Flash. A fresh image is captured for each decision after the page readiness check and reused across that decision's candidate rounds; `state` is still sent. This is independent of `SCREENSHOTS_ENABLED`: model screenshots are captured in memory without creating artifact files. Capture failure interrupts the run at `decision_screenshot`; images are not silently dropped. Debug logs show image byte/encoded lengths rather than the base64 contents. Reconnect the MCP container after editing `.env`.
 
 Set `SCREENSHOTS_ENABLED=true` in `.env` and reconnect the MCP container. The default is disabled. Compose bind-mounts `./artifacts` from the project directory at `/app/artifacts`; screenshots are regular local files, not a Docker volume.
 

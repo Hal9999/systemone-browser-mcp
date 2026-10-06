@@ -31,11 +31,15 @@ async function ensurePage() {
   return page;
 }
 server.registerTool('browser_run', {
-  description: 'Start an autonomous browser task using SystemOne. Returns a job ID immediately; poll browser_status. Completion is unverified: inspect returned page evidence. One task at a time.',
+  description: 'Start an autonomous browser task using SystemOne. Supply url to open a website; a URL mentioned only in goal does not navigate. Omitting url continues an already open HTTP/HTTPS page, otherwise returns url_required. Returns a job ID immediately; poll browser_status. Completion is unverified: inspect returned page evidence. One task at a time.',
   inputSchema: { goal: z.string().min(1).max(12000), url: z.string().url().optional(), maxSteps: z.number().int().min(1).max(60).default(20), minProbability: z.number().min(0).max(1).optional() }
 }, async ({ goal, url, maxSteps, minProbability }) => {
   if (job?.running) return { ...output({ error: 'A task is already running.', jobId: job.id }), isError: true };
   const startUrl = url ? validateUrl(url) : undefined;
+  if (!startUrl && (!page || page.isClosed() || !/^https?:\/\//i.test(page.url()))) {
+    log('warn', 'navigation.url_required');
+    return { ...output({ error: 'url_required', message: 'Provide the url parameter to browser_run to open a website. Mentioning a website in goal does not navigate the browser. Without url, only an already open HTTP/HTTPS page can be continued.' }), isError: true };
+  }
   const id = randomUUID();
   const screenshots = createScreenshots(id);
   const current = { screenshots: screenshots.files, id, running: true, controller: new AbortController(), trace: [] as unknown[], result: undefined as unknown };

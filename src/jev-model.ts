@@ -139,6 +139,7 @@ export interface JevPolicy {
 		goal: string,
 		history: unknown[],
 		signal: AbortSignal,
+		images?: string[],
 	): Promise<Decision>;
 	text(
 		observation: Observation,
@@ -189,7 +190,10 @@ export function endpointErrorMessage(payload: any, key?: string): string | undef
 }
 async function post(url: string, key: string | undefined, body: unknown, signal: AbortSignal, debugEvent?: 'systemone' | 'text_helper') {
   const requestId = debugEvent ? randomUUID() : undefined;
-  if (debugEvent) log('debug', `${debugEvent}.request`, { requestId, endpoint: endpointAddress(url), body });
+  const logBody = debugEvent === 'systemone' && body && typeof body === 'object' && 'images' in body
+    ? { ...body, images: (body as { images: string[] }).images.map(image => ({ encoding: 'base64', length: image.length })) }
+    : body;
+  if (debugEvent) log('debug', `${debugEvent}.request`, { requestId, endpoint: endpointAddress(url), body: logBody });
   const started = performance.now();
   const endpoint = endpointAddress(url);
   log('info', 'ai.request_started', { endpoint });
@@ -221,7 +225,9 @@ export function createJevPolicy(): JevPolicy {
   const url = process.env.SYSTEMONE_URL ?? "http://127.0.0.1:8888/v1/systemone";
   const key = process.env.SYSTEMONE_API_KEY;
   return {
-    async choose(observation, goal, history, signal) {
+    async choose(observation, goal, history, signal, images) {
+      if (!observation.text.trim() && observation.targets.length === 0)
+        throw new PolicyError('empty_page', 'Page has no visible text or actionable controls; no decision request was sent. Check navigation and loading.');
       const actions = buildActions(observation);
       const questions = buildQuestions(observation, goal, actions);
       const limit = Number(process.env.SYSTEMONE_MAX_CANDIDATES ?? 26);
@@ -231,6 +237,7 @@ export function createJevPolicy(): JevPolicy {
         const result = await post(url, key, { model: process.env.SYSTEMONE_MODEL ?? "laya",
           ...(process.env.SYSTEMONE_MAX_LEN ? { max_len: Number(process.env.SYSTEMONE_MAX_LEN) } : {}),
           ...(process.env.SYSTEMONE_HEAD_MAX_LEN ? { head_max_len: Number(process.env.SYSTEMONE_HEAD_MAX_LEN) } : {}),
+          ...(images?.length ? { images } : {}),
           state: JSON.stringify(buildDecisionState(observation, history)), questions: subset }, signal, 'systemone');
         parseDecision(result, subset, observation, actions);
         log('debug', 'systemone.response_metadata', { inputTokens: result.usage?.input_tokens, offeredActions: Object.keys(subset.action.criteria).length });

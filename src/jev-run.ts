@@ -1,6 +1,7 @@
 // Adapted from cline/plugins jev-browser; modified for standalone MCP.
 import { setTimeout as delay } from "node:timers/promises";
 import type { Page } from "playwright";
+import { captureSystemOneImage } from './screenshots.ts';
 import {
 	isNavigationReadError,
 	observe,
@@ -107,12 +108,16 @@ export async function runJev(
 			const snapshot = await observe(page, signal);
 			try {
 				const decisionStarted = performance.now();
+				stage = 'decision_screenshot';
+				const image = await captureSystemOneImage(page);
+				if (image !== undefined) await snapshot.assertFresh();
 				stage = "evaluation";
 				const decision = await policy.choose(
 					snapshot.data,
 					input.goal,
 					memory.actions,
 					signal,
+					image === undefined ? undefined : [image],
 				);
 				signal.throwIfAborted();
 				await options.onStep?.({

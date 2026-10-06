@@ -38,7 +38,13 @@ test('external endpoints retain configuration and SystemOne payload logs are deb
     assert.equal(debug[1].status, 200);
     assert.equal(calls[0].headers.Authorization, 'Bearer decision-secret');
     assert.ok(!('max_len' in calls[0].body));
+    assert.ok(!('images' in calls[0].body));
     assert.ok(!logs.join('').includes('decision-secret'));
+    const image = Buffer.from('test PNG bytes').toString('base64');
+    await policy.choose(observation, 'Search', [], new AbortController().signal, [image]);
+    assert.deepEqual(calls.at(-1)?.body.images, [image]);
+    assert.ok(calls.at(-1)?.body.state);
+    assert.ok(!logs.join('').includes(image));
     logs.length = 0;
     assert.equal(await policy.text(observation, 'Search microfono usb', observation.targets[0], [], new AbortController().signal), 'microfono usb');
     assert.equal(calls.at(-1)?.url, 'http://text.test/v1/chat/completions');

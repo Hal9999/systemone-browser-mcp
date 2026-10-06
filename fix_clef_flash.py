@@ -17,7 +17,6 @@ and ~10 GB for the new model. Delete the new model once the upstream fix ships.
 import argparse
 import os
 import re
-import shutil
 import struct
 import subprocess
 import sys
@@ -109,6 +108,8 @@ def write_reordered(src, dst, data_start, tensors):
             left = t.size
             while left:
                 chunk = f.read(min(left, COPY_CHUNK))
+                if not chunk:
+                    raise EOFError(f"GGUF ended while copying tensor {t.name!r}; output is incomplete")
                 out.write(chunk)
                 left -= len(chunk)
 

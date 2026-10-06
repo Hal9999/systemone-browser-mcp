@@ -1,3 +1,5 @@
+// Adapted from cline/plugins jev-browser; modified for standalone MCP,
+// page readiness and target freshness. See NOTICE for upstream revision.
 import { setTimeout as delay } from "node:timers/promises";
 import type { Page } from "playwright";
 import { log } from './logger.ts';

@@ -5,3 +5,7 @@ node_modules/
 artifacts/
 
 mcp_config.json
+__pycache__/
+*.py[cod]
+*.log
+*.gguf
